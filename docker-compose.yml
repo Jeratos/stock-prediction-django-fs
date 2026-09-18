@@ -1,0 +1,29 @@
+services:
+  backend:
+    build:
+      context: ./backend-DRF
+      dockerfile: Dockerfile
+    container_name: stock_prediction_backend
+    command: >
+      sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend-DRF:/app
+    env_file:
+      - ./backend-DRF/.env
+
+  frontend:
+    build:
+      context: ./frontend-react
+      dockerfile: Dockerfile
+    container_name: stock_prediction_frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend-react:/app
+      - /app/node_modules
+    env_file:
+      - ./frontend-react/.env
+    depends_on:
+      - backend
