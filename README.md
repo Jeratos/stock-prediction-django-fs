@@ -21,7 +21,13 @@ A full-stack stock market prediction platform built with **Django REST Framework
    - [Setting GitHub Secrets](#setting-github-repository-secrets)
    - [Workflow Configuration File](#workflow-configuration-deployyaml)
    - [Testing Automated Deployment](#testing-automated-deployment)
-5. [Useful Operational Commands & Troubleshooting](#useful-operational-commands--troubleshooting)
+5. [Domain Setup & HTTPS (SSL) with Nginx & Certbot](#-domain-setup--https-ssl-with-nginx--certbot)
+   - [Step 1: Point Domain DNS to VPS](#step-1-point-domain-dns-to-vps)
+   - [Step 2: Install Nginx & Certbot](#step-2-install-nginx--certbot)
+   - [Step 3: Setup Nginx Reverse Proxy](#step-3-setup-nginx-reverse-proxy)
+   - [Step 4: Issue Free SSL with Let's Encrypt](#step-4-issue-free-ssl-with-lets-encrypt)
+   - [Step 5: Update App Environment & Django Settings](#step-5-update-app-environment--django-settings)
+6. [Useful Operational Commands & Troubleshooting](#useful-operational-commands--troubleshooting)
 
 ---
 
@@ -348,6 +354,143 @@ jobs:
 2. Go to the **Actions** tab in your GitHub repository.
 3. Click on the running **Deploy** workflow to view live execution logs.
 4. Once completed with a green checkmark, your server will automatically be running the updated build.
+
+---
+
+## 🔒 Domain Setup & HTTPS (SSL) with Nginx & Certbot
+
+By default, Docker exposes ports `5175` (frontend) and `8000` (backend) directly on HTTP. To use a custom domain with secure HTTPS (`https://yourdomain.com`), we run **Nginx** as a reverse proxy on the host machine and use **Certbot** to provision free, auto-renewing SSL certificates from Let's Encrypt.
+
+### Step 1: Point Domain DNS to VPS
+In your domain registrar's DNS manager (GoDaddy, Namecheap, Cloudflare, Hostinger, etc.), create these **A records**:
+
+| Type | Name / Host | Value / Target | TTL |
+| :--- | :--- | :--- | :--- |
+| **A** | `@` (root domain) | `<YOUR_VPS_IP>` | 300s / Auto |
+| **A** | `www` | `<YOUR_VPS_IP>` | 300s / Auto |
+
+*Verify DNS propagation from your terminal:*
+```bash
+ping yourdomain.com
+```
+
+---
+
+### Step 2: Install Nginx & Certbot
+SSH into your VPS as `root` (or sudo user) and install Nginx and Certbot:
+```bash
+sudo apt update
+sudo apt install -y nginx certbot python3-certbot-nginx
+
+# Ensure firewall allows standard web ports
+sudo ufw allow 'Nginx Full'
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+```
+
+---
+
+### Step 3: Setup Nginx Reverse Proxy
+Create a new virtual host configuration:
+```bash
+sudo nano /etc/nginx/sites-available/stock_prediction
+```
+
+Paste the following configuration (replace `yourdomain.com` with your actual domain):
+```nginx
+server {
+    listen 80;
+    server_name yourdomain.com www.yourdomain.com;
+
+    # Frontend (React Vite Container)
+    location / {
+        proxy_pass http://127.0.0.1:5175;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Backend API (Django REST Framework Container)
+    location /api/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Django Admin Panel
+    location /admin/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+Enable the site configuration and reload Nginx:
+```bash
+# Disable default site
+sudo rm -f /etc/nginx/sites-enabled/default
+
+# Enable stock prediction site
+sudo ln -s /etc/nginx/sites-available/stock_prediction /etc/nginx/sites-enabled/
+
+# Test syntax
+sudo nginx -t
+
+# Reload Nginx
+sudo systemctl reload nginx
+```
+
+---
+
+### Step 4: Issue Free SSL with Let's Encrypt
+Run Certbot to generate the SSL certificate and automatically update Nginx to HTTPS:
+```bash
+sudo certbot --nginx -d yourdomain.com -d www.yourdomain.com
+```
+
+- Enter your email address when prompted.
+- Accept terms of service.
+- Choose **Redirect** (redirects all HTTP traffic automatically to HTTPS).
+
+Certbot sets up an automatic systemd timer for certificate renewal. Verify renewal works:
+```bash
+sudo certbot renew --dry-run
+```
+
+---
+
+### Step 5: Update App Environment & Django Settings
+
+1. **Update Django Settings (`backend-DRF/stock_pradiction_main/settings.py`)**:
+   Ensure `CSRF_TRUSTED_ORIGINS` is configured for HTTPS:
+   ```python
+   CSRF_TRUSTED_ORIGINS = [
+       "https://yourdomain.com",
+       "https://www.yourdomain.com",
+   ]
+   ```
+
+2. **Update Frontend Environment on VPS**:
+   Edit `/root/ayush/stock-prediction-django-fs/frontend-react/.env`:
+   ```env
+   VITE_BASE_URL=https://yourdomain.com/api/v1
+   ```
+
+3. **Rebuild Containers**:
+   ```bash
+   cd /root/ayush/stock-prediction-django-fs
+   docker compose up -d --build
+   ```
 
 ---
 
