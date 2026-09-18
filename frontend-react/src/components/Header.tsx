@@ -6,7 +6,7 @@ const {isAuthenticated} = useAuth();
 
     return (
         <>
-            <header className="py-4 flex justify-between px-20">
+            <header className="py-4 flex justify-between px-20 bg-gray-800">
                 <div className="container mx-auto">
                     <Link to="/" className="text-2xl font-bold hover:text-blue-600 transition-all duration-300">Stock Market Prediction</Link>
                 </div>
