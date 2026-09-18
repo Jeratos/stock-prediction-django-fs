@@ -1,0 +1,25 @@
+name: Deploy
+
+on: 
+  push:
+    branches:
+      -main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps: 
+       - name: Checkout Code 
+         uses: action/checkout@v4
+
+       - name: Deploy via SSH
+         uses: appleboy/ssh-action@v1.0.3
+         with: 
+            host: ${{secrets.SSH_HOST}}
+            username: ${{secrets.VPS_USER}}   
+            key: ${{secrets.SSH_KEY}}
+            script: |
+               cd /root/ayush/stock-prediction-django-fs
+               git pull
+               docker compose up -d --build       
