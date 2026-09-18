@@ -19,7 +19,7 @@ services:
       dockerfile: Dockerfile
     container_name: stock_prediction_frontend
     ports:
-      - "5173:5173"
+      - "5175:5175"
     volumes:
       - ./frontend-react:/app
       - /app/node_modules
